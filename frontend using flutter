@@ -1,0 +1,215 @@
+import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+void main() {
+  runApp(BMICalculatorApp());
+}
+
+class BMICalculatorApp extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'BMI Calculator',
+      theme: ThemeData(primarySwatch: Colors.blue),
+      home: BMICalculatorPage(),
+    );
+  }
+}
+
+class BMICalculatorPage extends StatefulWidget {
+  @override
+  _BMICalculatorPageState createState() => _BMICalculatorPageState();
+}
+
+class _BMICalculatorPageState extends State<BMICalculatorPage> {
+  final TextEditingController _heightController = TextEditingController();
+  final TextEditingController _weightController = TextEditingController();
+  final TextEditingController _feetController = TextEditingController();
+  final TextEditingController _inchesController = TextEditingController();
+
+  String _heightUnit = 'cm';
+  String _weightUnit = 'kg';
+  double? _bmi;
+  String? _category;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLastCalculation();
+  }
+
+  Future<void> _loadLastCalculation() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _bmi = prefs.getDouble('bmi');
+      _category = prefs.getString('category');
+    });
+  }
+
+  Future<void> _saveCalculation(double bmi, String category) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble('bmi', bmi);
+    await prefs.setString('category', category);
+  }
+
+  void _calculateBMI() {
+    setState(() {
+      _errorMessage = null;
+      _bmi = null;
+      _category = null;
+    });
+
+    double? height;
+    double? weight;
+
+    try {
+      if (_heightUnit == 'cm') {
+        height = double.parse(_heightController.text);
+        if (height <= 0) throw Exception('Height must be positive.');
+        height /= 100; // Convert to meters
+      } else {
+        double feet = double.parse(_feetController.text);
+        double inches = double.parse(_inchesController.text);
+        if (feet < 0 || inches < 0 || (feet == 0 && inches == 0)) throw Exception('Height must be positive.');
+        height = (feet * 30.48 + inches * 2.54) / 100; // Convert to meters
+      }
+
+      weight = double.parse(_weightController.text);
+      if (_weightUnit == 'lb') {
+        weight *= 0.453592; // Convert to kg
+      }
+      if (weight <= 0) throw Exception('Weight must be positive.');
+
+      double bmi = weight / (height * height);
+      String category;
+      if (bmi < 18.5) category = 'Underweight';
+      else if (bmi < 25) category = 'Normal';
+      else if (bmi < 30) category = 'Overweight';
+      else category = 'Obese';
+
+      setState(() {
+        _bmi = bmi;
+        _category = category;
+      });
+      _saveCalculation(bmi, category);
+    } catch (e) {
+      setState(() {
+        _errorMessage = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
+
+  void _reset() {
+    setState(() {
+      _heightController.clear();
+      _weightController.clear();
+      _feetController.clear();
+      _inchesController.clear();
+      _bmi = null;
+      _category = null;
+      _errorMessage = null;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('BMI Calculator')),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            // Height Input
+            Row(
+              children: [
+                Expanded(
+                  child: DropdownButton<String>(
+                    value: _heightUnit,
+                    items: ['cm', 'ft/in'].map((String value) {
+                      return DropdownMenuItem<String>(
+                        value: value,
+                        child: Text(value),
+                      );
+                    }).toList(),
+                    onChanged: (value) => setState(() => _heightUnit = value!),
+                  ),
+                ),
+                if (_heightUnit == 'cm')
+                  Expanded(
+                    child: TextField(
+                      controller: _heightController,
+                      decoration: InputDecoration(labelText: 'Height (cm)'),
+                      keyboardType: TextInputType.number,
+                    ),
+                  )
+                else
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _feetController,
+                          decoration: InputDecoration(labelText: 'Feet'),
+                          keyboardType: TextInputType.number,
+                        ),
+                      ),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: _inchesController,
+                          decoration: InputDecoration(labelText: 'Inches'),
+                          keyboardType: TextInputType.number,
+                        ),
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+            // Weight Input
+            Row(
+              children: [
+                Expanded(
+                  child: DropdownButton<String>(
+                    value: _weightUnit,
+                    items: ['kg', 'lb'].map((String value) {
+                      return DropdownMenuItem<String>(
+                        value: value,
+                        child: Text(value),
+                      );
+                    }).toList(),
+                    onChanged: (value) => setState(() => _weightUnit = value!),
+                  ),
+                ),
+                Expanded(
+                  child: TextField(
+                    controller: _weightController,
+                    decoration: InputDecoration(labelText: 'Weight (${_weightUnit})'),
+                    keyboardType: TextInputType.number,
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 20),
+            Row(
+              children: [
+                ElevatedButton(onPressed: _calculateBMI, child: Text('Calculate BMI')),
+                SizedBox(width: 10),
+                ElevatedButton(onPressed: _reset, child: Text('Reset')),
+              ],
+            ),
+            SizedBox(height: 20),
+            if (_errorMessage != null)
+              Text(_errorMessage!, style: TextStyle(color: Colors.red)),
+            if (_bmi != null)
+              Column(
+                children: [
+                  Text('BMI: ${_bmi!.toStringAsFixed(1)}', style: TextStyle(fontSize: 24)),
+                  Text('Category: $_category', style: TextStyle(fontSize: 18)),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
